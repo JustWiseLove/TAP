@@ -1,12 +1,10 @@
-/* TAP — Turn Around Program */
+/* WW Journey Tracker v2 — Pure Vanilla JS */
 
 (function () {
   "use strict";
 
   // ─── Constants ───────────────────────────────────────────────
-  const STORAGE_KEY = "tap_state";
-  // Prior key from earlier installs — read once so existing data is never lost
-  const PRIOR_STORAGE_KEY = "ww_tracker_v2_state";
+  const STORAGE_KEY = "ww_tracker_v2_state";
   const FLEX_WEEKLY = 35;
   const CIRCUMFERENCE = 2 * Math.PI * 52; // ≈ 326.73
 
@@ -15,9 +13,9 @@
 
   // ─── State ───────────────────────────────────────────────────
   let state = null;
-  let selectedDate = null;
-  let addTargetDate = null;
-  let pendingFood = null;
+  let selectedDate = null; // YYYY-MM-DD for Daily tab
+  let addTargetDate = null; // which day the add-modal will log to
+  let pendingFood = null; // food being added via qty modal
   let editingFoodId = null;
   let scannerActive = false;
   let html5QrCode = null;
@@ -59,7 +57,7 @@
 
   function getWeekStart(dateStr, weekStartDay) {
     const dt = parseDate(dateStr);
-    const dow = dt.getDay();
+    const dow = dt.getDay(); // 0=Sun
     let diff = dow - weekStartDay;
     if (diff < 0) diff += 7;
     return addDays(dateStr, -diff);
@@ -128,8 +126,7 @@
 
   // ─── Persistence ─────────────────────────────────────────────
   function defaultState() {
-    // Foods come ONLY from food.js (DEFAULT_FOODS). No inline starter list.
-    // Used only when there is no saved data; never overwrites an existing library.
+    // DEFAULT_FOODS comes from food.js — only used on first install; never overwrites saved library
     const starterFoods =
       typeof DEFAULT_FOODS !== "undefined" && Array.isArray(DEFAULT_FOODS) && DEFAULT_FOODS.length
         ? DEFAULT_FOODS.map((f, i) => ({ ...f, id: f.id || i + 1 }))
@@ -138,7 +135,7 @@
       profile: {
         weight: 150,
         activity: "sedentary",
-        weekStartDay: 1,
+        weekStartDay: 1, // Monday
       },
       foods: starterFoods,
       days: {},
@@ -151,26 +148,16 @@
 
   function loadState() {
     try {
-      // Prefer TAP key; fall back to prior key so existing progress is never lost
-      let raw = localStorage.getItem(STORAGE_KEY);
-      let fromPrior = false;
-      if (!raw) {
-        raw = localStorage.getItem(PRIOR_STORAGE_KEY);
-        fromPrior = !!raw;
-      }
+      const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         const def = defaultState();
         state = {
           profile: { ...def.profile, ...(parsed.profile || {}) },
-          // Keep the user's saved library exactly as stored (do not inject food.js)
           foods: Array.isArray(parsed.foods) ? parsed.foods : def.foods,
           days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
           flexPoints: { ...def.flexPoints, ...(parsed.flexPoints || {}) },
         };
-        if (fromPrior) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        }
       } else {
         state = defaultState();
       }
@@ -312,6 +299,7 @@
     const pts = dayPoints(today);
     const target = dailyTarget();
     const flex = flexRemaining();
+    const macros = dayMacros(today);
 
     $("today-points").textContent = Math.round(pts * 10) / 10;
     $("today-target").textContent = "/ " + target;
@@ -396,7 +384,8 @@
           input.select();
 
           const commit = () => {
-            applyQtyChange(dateStr, idx, Number(input.value), containerId);
+            const val = Number(input.value);
+            applyQtyChange(dateStr, idx, val, containerId);
           };
           input.addEventListener("blur", commit);
           input.addEventListener("keydown", (e) => {
@@ -610,7 +599,7 @@
     const manual = $("f-manual").value;
     let pts;
     if (manual !== "" && !isNaN(manual)) {
-      pts = Math.max(0, Math.round(Number(manual));
+      pts = Math.max(0, Math.round(Number(manual)));
     } else {
       pts = calculatePoints(cal, fat, fiber);
     }
@@ -1241,7 +1230,7 @@
         const ok2 = await confirmDialog("Are you sure?", "Type-level confirmation: all data will be wiped.");
         if (ok2) {
           localStorage.removeItem(STORAGE_KEY);
-          localStorage.removeItem(PRIOR_STORAGE_KEY);
+          localStorage.removeItem(LEGACY_STORAGE_KEY);
           state = defaultState();
           saveState();
           selectedDate = getNYDate();
